@@ -4,15 +4,22 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.MenuItem;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
+import java.util.Collection;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
@@ -51,15 +58,25 @@ public class SudokuGUI extends JFrame {
     // the current row and column we are potentially putting values into
     private int currentRow = -1;
     private int currentCol = -1;
+    
+    //hint row and column
+    private int hintRow = -1;
+    private int hintCol = -1;
+    
+    //show all legal values
+    private boolean showLegalValues = false;
+    
+    //Interesting feature: toggle to highlight values which are last empty in their row, col, or box
+    private boolean showIfLast = false;
 
     
     // figuring out how big to make each button
     // honestly not sure how much detail is needed here with margins
 	protected final int MARGIN_SIZE = 5;
     protected final int DOUBLE_MARGIN_SIZE = MARGIN_SIZE*2;
-    protected int squareSize = 90;
-    private int width = DOUBLE_MARGIN_SIZE + squareSize * numCols;    		
-    private int height = DOUBLE_MARGIN_SIZE + squareSize * numRows;  
+    protected int squareSize = 70;
+    private int width = DOUBLE_MARGIN_SIZE + squareSize * numCols;
+    private int height = DOUBLE_MARGIN_SIZE + squareSize * numRows;
     
     // for lots of fun, too much fun really, try "Wingdings"
     private static Font FONT = new Font("Verdana", Font.BOLD, 40);
@@ -94,7 +111,11 @@ public class SudokuGUI extends JFrame {
 				int digit = key - '0';
 				System.out.println(key);
 				if (currentRow == row && currentCol == col) {
-					sudoku.set(row, col, digit);
+					if (!sudoku.isLegal(row, col, digit)) {
+						JOptionPane.showMessageDialog(null, String.format("%d cannot go in row %d and col %d", digit, row, col));
+					} else {
+						sudoku.set(row, col, digit);
+					}
 				}
 				update();
 			}
@@ -115,6 +136,9 @@ public class SudokuGUI extends JFrame {
 			//System.out.printf("row %d, col %d, %s\n", row, col, e);
 			JButton button = (JButton)e.getSource();
 			
+			hintRow = -1;
+			hintCol = -1;
+			
 			if (row == currentRow && col == currentCol) {
 				currentRow = -1;
 				currentCol = -1;
@@ -126,7 +150,7 @@ public class SudokuGUI extends JFrame {
 				// TODO: figure out some way that users can enter values
 				// A simple way to do this is to take keyboard input
 				// or you can cycle through possible legal values with each click
-				// or pop up a selector with only the legal valuess
+				// or pop up a selector with only the legal values
 				
 			} else {
 				// TODO: error dialog letting the user know that they cannot enter values
@@ -156,7 +180,10 @@ public class SudokuGUI extends JFrame {
     private void update() {
     	for (int row=0; row<numRows; row++) {
     		for (int col=0; col<numCols; col++) {
-    			if (row == currentRow && col == currentCol && sudoku.isBlank(row, col)) {
+    			if (hintRow == row && hintCol == col) {
+    				buttons[row][col].setBackground(Color.YELLOW);
+    				setText(row, col, "");
+    			} else if (row == currentRow && col == currentCol && sudoku.isBlank(row, col)) {
     				// draw this grid square special!
     				// this is the grid square we are trying to enter value into
     				buttons[row][col].setForeground(Color.RED);
@@ -164,10 +191,18 @@ public class SudokuGUI extends JFrame {
     				// Maybe I should have used JLabel instead of JButton?
     				buttons[row][col].setBackground(Color.CYAN);
     				setText(row, col, "_");
-    			} else {
+    				if (showLegalValues) {
+    					Collection<Integer> legals = sudoku.getLegalValues(row, col);
+    					JOptionPane.showMessageDialog(null, legals.toString());
+    				}
+    			//Interesting feature: toggle to highlight values which are last empty in their row, col, or box
+    			} else if (showIfLast && sudoku.isLast(row, col)) {
     				buttons[row][col].setForeground(FONT_COLOR);
-    				buttons[row][col].setBackground(BACKGROUND_COLOR);
-	    			int val = sudoku.get(row, col);
+    				buttons[row][col].setBackground(Color.GREEN);
+    			} else {
+        			buttons[row][col].setBackground(BACKGROUND_COLOR);
+    				buttons[row][col].setForeground(FONT_COLOR);
+    				int val = sudoku.get(row, col);
 	    			if (val == 0) {
 	    				setText(row, col, "");
 	    			} else {
@@ -189,28 +224,51 @@ public class SudokuGUI extends JFrame {
     	JMenu file = new JMenu("File");
         menuBar.add(file);
         
+        JMenu newGame = new JMenu("New Game");
+        file.add(newGame);
+        
         // anonymous inner class
         // basically, immediately create a class that implements actionlistener
         // and then give it the given actionPerformed method.
-        addToMenu(file, "New Game", new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                sudoku.load("easy1.txt");
+        
+        //Interesting feature: multiple game modes
+        addToMenu(newGame, "Easy", new ActionListener() {
+
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				// TODO Auto-generated method stub
+				sudoku.load("easy1.txt");
                 update();
-            }
+			}
+        	
+        });
+        
+        addToMenu(newGame, "Hard", new ActionListener() {
+
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				// TODO Auto-generated method stub
+				sudoku.load("hard1.txt");
+                update();
+			}
+        	
         });
         
         addToMenu(file, "Save", new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-            	// TODO: save the current game to a file!
-            	// HINT: Check the Util.java class for helpful methods
-            	// HINT: check out JFileChooser
-            	// https://docs.oracle.com/javase/tutorial/uiswing/components/filechooser.html
-            	JOptionPane.showMessageDialog(null,
-            		    "TODO: save the current game to a file!\n"
-            		    + "HINT: Check the Util.java class for helpful methods"
-            		    + "HINT: Check out JFileChooser");
+            	String board = sudoku.toFileString();
+            	
+            	JFileChooser jfc = new JFileChooser(new File("."));
+            	
+            	int returnValue = jfc.showSaveDialog(null);
+            	
+            	if (returnValue == JFileChooser.APPROVE_OPTION) {
+            		File selectedFile = jfc.getSelectedFile();
+            		Util.writeToFile(selectedFile, board);
+            		JOptionPane.showMessageDialog(null, "Saved game to file " + selectedFile.getAbsolutePath());
+            	}
+            	
                 update();
             }
         });
@@ -218,14 +276,16 @@ public class SudokuGUI extends JFrame {
         addToMenu(file, "Load", new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-            	// TODO: load a saved game from a file
-            	// HINT: Check the Util.java class for helpful methods
-            	// HINT: check out JFileChooser
-            	// https://docs.oracle.com/javase/tutorial/uiswing/components/filechooser.html
-            	JOptionPane.showMessageDialog(null,
-            		    "TODO: load a saved game from a file\n"
-            		    + "HINT: Check the Util.java class for helpful methods\n"
-            		    + "HINT: Check out JFileChooser");
+            	JFileChooser jfc = new JFileChooser(new File("."));
+            	
+            	int returnValue = jfc.showOpenDialog(null);
+            	
+            	if (returnValue == JFileChooser.APPROVE_OPTION) {
+            		File selectedFile = jfc.getSelectedFile();
+            		sudoku.load(selectedFile);
+            		JOptionPane.showMessageDialog(null, "Loaded game from file " + selectedFile.getAbsolutePath());
+            	}
+            	
                 update();
             }
         });
@@ -239,10 +299,44 @@ public class SudokuGUI extends JFrame {
         addToMenu(help, "Hint", new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				JOptionPane.showMessageDialog(null, "Give the user a hint! Highlight the most constrained square\n" + 
-						"which is the square where the fewest posssible values can go");
+				for (int r = 0; r < 9; r++) {
+					for (int c = 0; c < 9; c++) {
+						if (sudoku.isBlank(r, c) && sudoku.getLegalValues(r, c).size() == 1) {
+							hintRow = r;
+							hintCol = c;
+							update();
+							return;
+						}
+					}
+				}
+				
+				JOptionPane.showMessageDialog(null, "There are no slots with only one value available. Think outside the box!");
 			}
 		});
+        
+        JMenuItem menuItem = new JCheckBoxMenuItem("Show Legals");
+        help.add(menuItem);
+        menuItem.addItemListener(new ItemListener() {
+			@Override
+			public void itemStateChanged(ItemEvent e) {
+				// TODO Auto-generated method stub
+				showLegalValues = !showLegalValues;
+			}
+        	
+        });
+        
+      //Interesting feature: toggle to highlight values which are last empty in their row, col, or box
+        JMenuItem menuItemLasts = new JCheckBoxMenuItem("Show Lasts");
+        help.add(menuItemLasts);
+        menuItemLasts.addItemListener(new ItemListener() {
+			@Override
+			public void itemStateChanged(ItemEvent e) {
+				// TODO Auto-generated method stub
+				showIfLast = !showIfLast;
+				update();
+			}
+        	
+        });
         
         this.setJMenuBar(menuBar);
     }
@@ -260,6 +354,7 @@ public class SudokuGUI extends JFrame {
     	menu.add(menuItem);
     	menuItem.addActionListener(listener);
     }
+    
     
     private void createMouseHandler() {
     	MouseAdapter a = new MouseAdapter() {
